@@ -1,3 +1,12 @@
+import os
+import json
+from fastapi import FastAPI
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+
+app = FastAPI()
+
+DRIVE_FOLDER_ID = "1UMZh6SQs32ynwjcg0weTzGhaZUehMXve"
 from fastapi import FastAPI
 from typing import List
 
@@ -17,13 +26,37 @@ def list_projects():
 
 @app.get("/projects/{project_id}/dates")
 def get_available_dates(project_id: str):
+
+    service = get_drive_service()
+
+    # buscar carpeta hades dentro de Witnesscloud
+    query = f"'{DRIVE_FOLDER_ID}' in parents and name='{project_id}' and mimeType='application/vnd.google-apps.folder'"
+
+    results = service.files().list(
+        q=query,
+        fields="files(id, name)"
+    ).execute()
+
+    folders = results.get("files", [])
+
+    if not folders:
+        return {"error": "Project folder not found"}
+
+    project_folder_id = folders[0]["id"]
+
+    # listar subcarpetas (fechas)
+    date_query = f"'{project_folder_id}' in parents and mimeType='application/vnd.google-apps.folder'"
+
+    date_results = service.files().list(
+        q=date_query,
+        fields="files(name)"
+    ).execute()
+
+    dates = sorted([f["name"] for f in date_results.get("files", [])])
+
     return {
         "project": project_id,
-        "available_dates": [
-            "2026-02-14",
-            "2026-02-15",
-            "2026-02-16"
-        ]
+        "available_dates": dates
     }
 
 @app.get("/projects/{project_id}/compare")
@@ -34,4 +67,16 @@ def compare(project_id: str, date1: str, date2: str):
         "date2": date2,
         "status": "comparison endpoint ready"
     }
+
+def get_drive_service():
+    credentials_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
+    credentials_dict = json.loads(credentials_json)
+
+    credentials = service_account.Credentials.from_service_account_info(
+        credentials_dict,
+        scopes=["https://www.googleapis.com/auth/drive.readonly"]
+    )
+
+    service = build("drive", "v3", credentials=credentials)
+    return service
 
