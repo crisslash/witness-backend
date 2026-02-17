@@ -24,6 +24,65 @@ def health():
 def list_projects():
     return {"projects": ["promet-donihue"]}
 
+@app.get("/projects/{project_id}/photo-of-day")
+def get_photo_of_day(project_id: str, date: str):
+
+    service = get_drive_service()
+
+    # buscar carpeta del proyecto
+    project_query = f"'{DRIVE_FOLDER_ID}' in parents and name='{project_id}' and mimeType='application/vnd.google-apps.folder'"
+    project_results = service.files().list(q=project_query, fields="files(id, name)").execute()
+    project_folder_id = project_results.get("files", [])[0]["id"]
+
+    # buscar carpeta de fecha
+    date_query = f"'{project_folder_id}' in parents and name='{date}' and mimeType='application/vnd.google-apps.folder'"
+    date_results = service.files().list(q=date_query, fields="files(id, name)").execute()
+
+    if not date_results.get("files"):
+        return {"error": "Date folder not found"}
+
+    date_folder_id = date_results["files"][0]["id"]
+
+    # listar imágenes dentro de la carpeta
+    image_query = f"'{date_folder_id}' in parents and mimeType contains 'image/'"
+    image_results = service.files().list(q=image_query, fields="files(id, name)").execute()
+
+    images = image_results.get("files", [])
+
+    if not images:
+        return {"error": "No images found"}
+
+    # buscar la más cercana a 12:00
+    target_minutes = 12 * 60
+
+    best_image = None
+    smallest_diff = None
+
+    for img in images:
+        name = img["name"]
+
+        try:
+            time_part = name.split("_")[1].replace(".jpg", "")
+            hour = int(time_part[:2])
+            minute = int(time_part[2:])
+            total_minutes = hour * 60 + minute
+
+            diff = abs(total_minutes - target_minutes)
+
+            if smallest_diff is None or diff < smallest_diff:
+                smallest_diff = diff
+                best_image = img
+
+        except Exception:
+            continue
+
+    return {
+        "project": project_id,
+        "date": date,
+        "selected_image": best_image
+    }
+
+
 @app.get("/projects/{project_id}/dates")
 def get_available_dates(project_id: str):
 
