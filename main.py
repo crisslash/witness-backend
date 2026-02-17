@@ -52,7 +52,14 @@ def get_available_dates(project_id: str):
         fields="files(name)"
     ).execute()
 
-    dates = sorted([f["name"] for f in date_results.get("files", [])])
+    import re
+
+all_folders = [f["name"] for f in date_results.get("files", [])]
+
+date_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+dates = sorted([name for name in all_folders if date_pattern.match(name)])
+
 
     return {
         "project": project_id,
